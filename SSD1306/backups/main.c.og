@@ -1,0 +1,145 @@
+#include <stm32f10x.h>
+#include <stm32f10x_rcc.h>
+#include <stm32f10x_gpio.h>
+
+// My Includes
+#include "i2c.h"
+#include <stm32f10x_i2c.h>
+
+// My defines
+#define SSD1306_7BIT_ADDRESS 0x3C
+//#define SSD1306_7BIT_ADDRESS 0x78
+
+// My Globals
+uint8_t i2c_tx_buf[10];
+
+
+// Function Prototypes
+void Delay(uint32_t nTime);
+
+void I2C_LowLevel_Init_I2C1(int ClockSpeed, int OwnAddress)
+{
+
+    GPIO_InitTypeDef  GPIO_InitStructure;
+    I2C_InitTypeDef  I2C_InitStructure;
+
+    // Enable GPIOB clocks
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+
+    // Configure I2C clock and GPIO 
+
+    GPIO_StructInit(&GPIO_InitStructure);
+
+    /* I2C1 clock enable */
+
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
+
+    /* I2C1 SDA and SCL configuration */
+
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+    /* I2C1 Reset */
+
+    //RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C1, ENABLE);
+    RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C1, DISABLE);
+    RCC_APB1PeriphResetCmd(RCC_APB1Periph_I2C1, ENABLE);
+
+    /* Configure I2Cx                */
+
+    I2C_StructInit(&I2C_InitStructure);
+    I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
+    I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;
+    I2C_InitStructure.I2C_OwnAddress1 = OwnAddress;
+    //I2C_InitStructure.I2C_Ack = I2C_Ack_Enable;
+    I2C_InitStructure.I2C_Ack = I2C_Ack_Disable;
+    I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
+    I2C_InitStructure.I2C_ClockSpeed = ClockSpeed;
+
+    I2C_Init(I2C1, &I2C_InitStructure);
+    I2C_Cmd(I2C1, ENABLE);
+}
+
+
+
+int main(void){
+    i2c_tx_buf[0] = 0xAE;
+    i2c_tx_buf[1] = 0xff;
+    GPIO_InitTypeDef GPIO_InitStructure;
+    
+    // Enable peripheral Clocks
+    // Enable clocks for GPIO Port C
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
+    
+    // Configure Pins
+    // Pin PC9 must be configured as an output
+    GPIO_StructInit(&GPIO_InitStructure);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+    
+    // Configure I2C1
+    I2C_LowLevel_Init(I2C2, 100000, 0x00);            // What address to use for I2C_OwnAddress1?
+    GPIO_WriteBit(GPIOC, GPIO_Pin_9, 1);
+    
+    // Write some data
+    // Status I2C_Write(I2C_TypeDef* I2Cx, const uint8_t* buf,  uint32_t nbyte, uint8_t SlaveAddress)
+    // Configure SysTick Timer
+    //if (SysTick_Config(SystemCoreClock / 100000))
+    //    while (1);
+
+
+    while (1){
+        I2C_Write(I2C2, &i2c_tx_buf, 1, SSD1306_7BIT_ADDRESS);
+    //    static int ledval = 0;
+
+    //    // toggle LED
+    //    GPIO_WriteBit(GPIOC, GPIO_Pin_9, (ledval) ? Bit_SET : Bit_RESET);
+    //    ledval = 1 - ledval;
+    //    Delay (250);    // wait 250ms
+    }
+    if(I2C_Write(I2C1, &i2c_tx_buf, 1, SSD1306_7BIT_ADDRESS) == Success){ 
+     
+         // Configure SysTick Timer
+         if (SysTick_Config(SystemCoreClock / 100000))
+             while (1);
+
+
+         while (1){
+             static int ledval = 0;
+
+             // toggle LED
+             GPIO_WriteBit(GPIOC, GPIO_Pin_9, (ledval) ? Bit_SET : Bit_RESET);
+             ledval = 1 - ledval;
+             Delay (250);    // wait 250ms
+         }
+    }
+    else{
+        return -1;
+    }
+}
+
+// Timer code
+static __IO uint32_t TimingDelay;
+
+void Delay(uint32_t nTime){
+    TimingDelay = nTime;
+    while(TimingDelay != 0);
+}
+
+void SysTick_Handler(void){
+    if (TimingDelay != 0x00)
+        TimingDelay--;
+}
+
+#ifdef USE_FULL_ASSERT
+void assert_failed(uint8_t* file, uint32_t line){
+    /* Infinite loop */
+    /* Use GDB to find out why we're here */
+    while(1);
+}
+#endif
