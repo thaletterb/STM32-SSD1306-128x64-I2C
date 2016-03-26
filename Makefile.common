@@ -4,7 +4,8 @@ ELF=$(notdir $(CURDIR)).elf
 
 # Tool path
 
-TOOLROOT=/home/brian/Projects/raspberrypi/bakingpi/arm-2008q3/bin
+#TOOLROOT=/home/brian/Projects/raspberrypi/bakingpi/arm-2008q3/bin
+TOOLROOT=/home/brian/bin/gcc-arm-embedded/gcc-arm-none-eabi-4_8-2014q2/bin/
 
 # Library path
 
