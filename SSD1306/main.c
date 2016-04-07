@@ -96,6 +96,7 @@ void Delay(uint32_t nTime);
 
 /* Private functions ---------------------------------------------------------*/
 void init_error_led_pin(void){
+    // Green LED is on PC9, Blue LED is on PC8
     GPIO_InitTypeDef GPIO_InitStructure;
 
     // Enable peripheral Clocks
@@ -105,7 +106,7 @@ void init_error_led_pin(void){
     // Configure Pins
     // Pin PC9 must be configured as an output
     GPIO_StructInit(&GPIO_InitStructure);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9 | GPIO_Pin_8;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init(GPIOC, &GPIO_InitStructure);
@@ -113,6 +114,25 @@ void init_error_led_pin(void){
 
 void turn_on_error_led_pin(void){
     GPIO_WriteBit(GPIOC, GPIO_Pin_9, 1);
+    GPIO_WriteBit(GPIOC, GPIO_Pin_8, 1);
+}
+
+void init_user_button(void){
+    GPIO_InitTypeDef GPIO_InitStructure;
+
+    // Enable peripheral clocks to GPIO Port A
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+
+    // Configure Button - Attached to PA0
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+}
+
+uint8_t read_user_button_state(void){
+    return GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_0);
 }
 
 int i2c_send_command(I2C_TypeDef *I2Cx, uint8_t slave_address, uint8_t slave_data){
@@ -351,7 +371,7 @@ void ssd1306_draw_big_char_to_buffer(uint8_t x, uint8_t page_num, uint8_t which_
         which_byte = x + ((page_num+j)*128);
         for(i=0; i<24; i++){
         // 24 bits wide
-            buffer_pointer[which_byte+i] = Tahoma24x40[which_char][(24*j)+i];
+            buffer_pointer[which_byte+i] = Tahoma24x40[which_char-ASCII_24x40_FONT_ASCII_OFFSET][(24*j)+i];
             //turn_on_error_led_pin();       // Error LED
         }
     }
@@ -367,6 +387,17 @@ void ssd1306_draw_string_to_buffer(uint8_t x, uint8_t page_num, uint8_t *string,
         i++;
     }
 }
+
+void ssd1306_draw_big_string_to_buffer(uint8_t x, uint8_t page_num, uint8_t *string, uint8_t *buffer_pointer){
+// Draws 'string' to the display buffer (buffer pointer) at coord (x, page_num)
+
+    uint8_t i=0;
+    while(string[i] != 0){
+        ssd1306_draw_big_char_to_buffer(x+(ASCII_24x40_FONT_WIDTH*i), page_num, string[i], buffer_pointer);
+        i++;
+    }
+}
+
 
 void init_i2c1_peripheral(I2C_TypeDef *I2Cx){
 // Initializes the I2C1 Peripheral on PB6 & PB7
@@ -440,20 +471,16 @@ int main(void){
     while(1){
         // Draw the big nums
         ssd1306_clear_display_buffer(global_display_buffer);
-        uint8_t index=0;
-        for(index=0; index<11; index++){
-            ssd1306_draw_big_char_to_buffer(0, 0, 11, global_display_buffer);
-            ssd1306_draw_big_char_to_buffer(0, 0, index, global_display_buffer);
-            ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
-            Delay(1000);
-        }
+        ssd1306_draw_big_string_to_buffer(0, 0, "12:00", global_display_buffer);      // Loop through
+        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+        Delay(5000);
 
         uint16_t array_index;
         ssd1306_draw_char_to_buffer(0, 0, 'A', global_display_buffer);
         ssd1306_draw_string_to_buffer(0, 1, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", global_display_buffer);
         ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
-        Delay(1000);
+        Delay(5000);
 
         for(array_index=0; array_index < ((128*64)/8); array_index++){
             global_display_buffer[array_index]=0xAA;
@@ -461,7 +488,7 @@ int main(void){
 
         ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
-        Delay(1000);
+        Delay(5000);
 
         for(array_index=0; array_index < ((128*64)/8); array_index++){
             global_display_buffer[array_index]=0x11;
@@ -469,7 +496,7 @@ int main(void){
 
         ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
-        Delay(1000);
+        Delay(5000);
 
         for(array_index=0; array_index < ((128*64)/8); array_index++){
             global_display_buffer[array_index]=0x00;
