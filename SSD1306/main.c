@@ -2,7 +2,10 @@
 #include <stm32f10x_i2c.h>
 #include <stm32f10x_rcc.h>
 #include <stm32f10x_gpio.h>
+#include <stm32f10x_tim.h>
+
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "myFont.h"
 
@@ -11,6 +14,19 @@
 #define I2C1_SSD1306_SLAVE_ADDRESS8 0x78                      // 8 bit slave address (write)
 #define I2C_TIMEOUT                 100000
 
+typedef struct{
+    uint8_t hours;
+    uint8_t minutes;
+    uint8_t seconds;
+}system_time_t;
+
+system_time_t my_system_time;
+
+void init_system_time(system_time_t time_struct){
+    time_struct.hours = 12;
+    time_struct.minutes = 0;
+    time_struct.seconds = 0;
+}
 
 uint8_t global_display_buffer[(128*64)/8] = {
 
@@ -95,6 +111,61 @@ void Delay(uint32_t nTime);
 
 
 /* Private functions ---------------------------------------------------------*/
+
+static void init_timer3(void){
+// Initialize and enable interrupts on timer 3 every 1 second
+// 1) Initiailze Timer 3
+// 2) Enable Interrupt
+// 3) Enable Timer
+// 4) Enable interrupts:w
+
+
+    TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;                  // Timer init structure    
+
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);            // Enable the clocks to Tim3 periph
+
+    TIM_TimeBaseStructInit(&TIM_TimeBaseStructure);
+    TIM_TimeBaseStructure.TIM_Prescaler = SystemCoreClock/1000 - 1; // Prescaler 
+    TIM_TimeBaseStructure.TIM_Period = 1000 - 1;                    // Auto Reload Register ARR (0..999)
+    TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;     // Count up
+    TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);                 // Enable timer
+
+    TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);                      // Enable interrupt
+
+    TIM_Cmd(TIM3, ENABLE);                                          // Enable timer
+
+    NVIC_EnableIRQ(TIM3_IRQn);                                      // Enable Interrupts
+
+}
+
+void TIM3_IRQHandler(void){
+// Timer 3 Interrupt Handler
+    #define LED_BLUE_GPIO GPIOC
+    #define LED_BLUE_PIN 8
+
+    my_system_time.seconds++;
+    if(my_system_time.seconds > 59){
+        my_system_time.seconds = 0;
+        my_system_time.minutes++;
+    }
+    if(my_system_time.minutes > 59){
+        my_system_time.minutes = 0;
+        my_system_time.hours++;
+    }
+    if(my_system_time.hours > 12){
+        my_system_time.hours = 1;
+    }
+    
+
+    if (TIM_GetFlagStatus(TIM3, TIM_FLAG_Update) != RESET) {
+        static int led_val = 0;
+        TIM_ClearFlag(TIM3, TIM_IT_Update);
+        GPIO_WriteBit(GPIOC, GPIO_Pin_8, led_val ? 1 : 0);       // Error LED
+        led_val = 1-led_val;
+    }
+
+}
+
 void init_error_led_pin(void){
     // Green LED is on PC9, Blue LED is on PC8
     GPIO_InitTypeDef GPIO_InitStructure;
@@ -114,7 +185,7 @@ void init_error_led_pin(void){
 
 void turn_on_error_led_pin(void){
     GPIO_WriteBit(GPIOC, GPIO_Pin_9, 1);
-    GPIO_WriteBit(GPIOC, GPIO_Pin_8, 1);
+    //GPIO_WriteBit(GPIOC, GPIO_Pin_8, 1);
 }
 
 void init_user_button(void){
@@ -342,6 +413,33 @@ void ssd1306_clear_display_buffer(uint8_t *buffer_pointer){
     }
 }
 
+void ssd1306_draw_pixel_to_buffer(uint8_t x, uint8_t y, uint8_t* buffer_pointer){
+// Turns on the pixel at (x,y) in the local buffer
+    #define SSD1306_HORIZONTAL_RES  128
+
+    uint8_t which_bit, which_page, bit_mask, value = 0;
+    uint16_t which_byte; 
+
+    which_page = y / 8;             // There are 8 vertical pixels per page
+    which_byte = x + (SSD1306_HORIZONTAL_RES * which_page);
+    which_bit = y % 8;
+
+    bit_mask = (1<<which_bit);
+    
+    buffer_pointer[which_byte] = (buffer_pointer[which_byte] & ~bit_mask) | ((1<<which_bit) & bit_mask);
+}
+
+void ssd1306_draw_circle_to_buffer(uint8_t x, uint8_t y, uint8_t radius, uint8_t* buffer_pointer){
+// Draws a circle of radius centered at (x,y) 
+    uint16_t x_square, y_square, radius_square;
+
+    x_square = x * x;
+    y_square = y * y;
+    radius_square = radius * radius;
+
+    
+}
+
 void ssd1306_draw_char_to_buffer(uint8_t x, uint8_t page_num, uint8_t which_char, uint8_t *buffer_pointer){
 // Draws 'which_char' to the display buffer given by buffer_pointer at coord (x, page_num)
 
@@ -443,11 +541,10 @@ int main(void){
     int TimeOut;
     const uint8_t *global_buffer_ptr = global_display_buffer;
 
-
+    init_system_time(my_system_time);
     init_error_led_pin();
 
-    //turn_on_error_led_pin();
-    //GPIO_WriteBit(GPIOC, GPIO_Pin_9, 0);
+    init_timer3();
 
     GPIO_InitTypeDef GPIO_InitStructure1;
 
@@ -465,45 +562,64 @@ int main(void){
     // Draw the buffer
     ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
     Delay(1000);
+    
 
+    ssd1306_clear_display_buffer(global_display_buffer);
+    ssd1306_draw_pixel_to_buffer(64, 50, global_display_buffer);
+    ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+
+    
+    while(1){
+    // Show off basic "clock" functionality
+        Delay(1000);
+        ssd1306_clear_display_buffer(global_display_buffer);
+
+        ssd1306_draw_big_char_to_buffer(0, 0, my_system_time.minutes/10 + '0', global_display_buffer);
+        ssd1306_draw_big_char_to_buffer(24, 0, my_system_time.minutes%10 + '0', global_display_buffer);
+        ssd1306_draw_big_char_to_buffer(48, 0, ':', global_display_buffer);
+        ssd1306_draw_big_char_to_buffer(72, 0, my_system_time.seconds/10 + '0', global_display_buffer);
+        ssd1306_draw_big_char_to_buffer(96, 0, my_system_time.seconds%10 + '0', global_display_buffer);
+        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+        ssd1306_clear_display_buffer(global_display_buffer);
+    }
 
     // Loop forever printng strings and patterns
-    while(1){
-        // Draw the big nums
-        ssd1306_clear_display_buffer(global_display_buffer);
-        ssd1306_draw_big_string_to_buffer(0, 0, "12:00", global_display_buffer);      // Loop through
-        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
-        Delay(5000);
+    //while(1){
+    //    // Draw the big nums
+    //    ssd1306_clear_display_buffer(global_display_buffer);
+    //    ssd1306_draw_big_string_to_buffer(0, 0, "12:00", global_display_buffer);      // Loop through
+    //    ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+    //    Delay(5000);
 
-        uint16_t array_index;
-        ssd1306_draw_char_to_buffer(0, 0, 'A', global_display_buffer);
-        ssd1306_draw_string_to_buffer(0, 1, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", global_display_buffer);
-        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+    //    uint16_t array_index;
+    //    ssd1306_draw_char_to_buffer(0, 0, 'A', global_display_buffer);
+    //    ssd1306_draw_string_to_buffer(0, 1, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", global_display_buffer);
+    //    ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
-        Delay(5000);
+    //    Delay(5000);
 
-        for(array_index=0; array_index < ((128*64)/8); array_index++){
-            global_display_buffer[array_index]=0xAA;
-        }
+    //    for(array_index=0; array_index < ((128*64)/8); array_index++){
+    //        global_display_buffer[array_index]=0xAA;
+    //    }
 
-        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+    //    ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
-        Delay(5000);
+    //    Delay(5000);
 
-        for(array_index=0; array_index < ((128*64)/8); array_index++){
-            global_display_buffer[array_index]=0x11;
-        }
+    //    for(array_index=0; array_index < ((128*64)/8); array_index++){
+    //        global_display_buffer[array_index]=0x11;
+    //    }
 
-        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+    //    ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
-        Delay(5000);
+    //    Delay(5000);
 
-        for(array_index=0; array_index < ((128*64)/8); array_index++){
-            global_display_buffer[array_index]=0x00;
-        }
+    //    for(array_index=0; array_index < ((128*64)/8); array_index++){
+    //        global_display_buffer[array_index]=0x00;
+    //    }
 
-        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
-    }
+    //    ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
+    //}
 
 }
 

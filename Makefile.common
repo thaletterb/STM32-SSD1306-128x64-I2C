@@ -56,7 +56,7 @@ CFLAGS+= -I$(TEMPLATEROOT) -I$(DEVICE) -I$(CORE) -I$(PERIPH)/inc -I.
 CFLAGS+= -D$(PTYPE) -DUSE_STDPERIPH_DRIVER $(FULLASSERT)
 CFLAGS+= -I$(TEMPLATEROOT)/Library/ff9/src -I$(TEMPLATEROOT)/Library
 
-SEMIHOSTING_FLAGS = --specs=rdimon.specs -lc -lrdimon 
+SEMIHOSTING_FLAGS = --specs=rdimon.specs -lc -lrdimon nano.specs -u _printf_float 
 
 # Build executable 
 
