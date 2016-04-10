@@ -15,6 +15,7 @@ LIBROOT=/home/brian/Projects/stm/STM32F10x_StdPeriph_Lib_V3.5.0
 
 CC=$(TOOLROOT)/arm-none-eabi-gcc
 LD=$(TOOLROOT)/arm-none-eabi-gcc
+#LD=$(TOOLROOT)/arm-none-eabi-ld
 AR=$(TOOLROOT)/arm-none-eabi-ar
 AS=$(TOOLROOT)/arm-none-eabi-as
 
