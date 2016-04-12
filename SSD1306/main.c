@@ -23,7 +23,7 @@ typedef struct{
 
 typedef enum{
     clock_state,
-    pattern_state
+    pattern_state,
 } my_states_t;
 
 typedef struct{
@@ -40,7 +40,8 @@ void init_system_time(system_time_t time_struct){
     time_struct.seconds = 0;
 }
 
-
+// Globals
+uint8_t current_button_status = 0;
 uint8_t global_display_buffer[(128*64)/8] = {
 
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,        // Page 0 (Top Most)
@@ -212,6 +213,9 @@ void init_error_led_pin(void){
 void turn_on_error_led_pin(void){
     GPIO_WriteBit(GPIOC, GPIO_Pin_9, 1);
     //GPIO_WriteBit(GPIOC, GPIO_Pin_8, 1);
+}
+void turn_off_error_led_pin(void){
+    GPIO_WriteBit(GPIOC, GPIO_Pin_9, 0);
 }
 
 void init_user_button(void){
@@ -604,8 +608,10 @@ int main(void){
 
     init_system_time(my_system_time);
     init_error_led_pin();
+    turn_off_error_led_pin();
 
     init_timer3();
+    init_user_button();
 
     GPIO_InitTypeDef GPIO_InitStructure1;
 
@@ -631,37 +637,38 @@ int main(void){
     ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
 
     uint8_t square_root_result = 0;
+    uint16_t array_index;
     
     while(1){
-    // Draw a circle 
-        Delay(1000);
         ssd1306_clear_display_buffer(global_display_buffer);
+        switch(my_system_status.current_state){
+            case clock_state:
+                ssd1306_draw_big_char_to_buffer(0, 0, my_system_time.minutes/10 + '0', global_display_buffer);
+                ssd1306_draw_big_char_to_buffer(24, 0, my_system_time.minutes%10 + '0', global_display_buffer);
+                ssd1306_draw_big_char_to_buffer(48, 0, ':', global_display_buffer);
+                ssd1306_draw_big_char_to_buffer(72, 0, my_system_time.seconds/10 + '0', global_display_buffer);
+                ssd1306_draw_big_char_to_buffer(96, 0, my_system_time.seconds%10 + '0', global_display_buffer);
+                break;
+            case pattern_state:
+                ssd1306_draw_circle_to_buffer(64, 32, 15, global_display_buffer);
+                ssd1306_draw_circle_to_buffer(64, 32, 13, global_display_buffer);
+                ssd1306_draw_circle_to_buffer(64, 32, 11, global_display_buffer);
+                ssd1306_draw_circle_to_buffer(64, 32, 9, global_display_buffer);
+                ssd1306_draw_circle_to_buffer(64, 32, 7, global_display_buffer);
+                ssd1306_draw_circle_to_buffer(64, 32, 5, global_display_buffer);
+                ssd1306_draw_circle_to_buffer(64, 32, 3, global_display_buffer);
+                break;
+            } 
 
-        ssd1306_draw_circle_to_buffer(64, 32, 8, global_display_buffer);
-        //ssd1306_draw_big_char_to_buffer(0, 0, square_root_result + '0', global_display_buffer);
-        //ssd1306_draw_big_char_to_buffer(0, 0, my_system_time.minutes/10 + '0', global_display_buffer);
-        //ssd1306_draw_big_char_to_buffer(24, 0, my_system_time.minutes%10 + '0', global_display_buffer);
-        //ssd1306_draw_big_char_to_buffer(48, 0, ':', global_display_buffer);
-        //ssd1306_draw_big_char_to_buffer(72, 0, my_system_time.seconds/10 + '0', global_display_buffer);
-        //ssd1306_draw_big_char_to_buffer(96, 0, my_system_time.seconds%10 + '0', global_display_buffer);
         ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
-        //ssd1306_clear_display_buffer(global_display_buffer);
-    }
-    while(1){
-    // Show off basic "clock" functionality
-        Delay(1000);
-        //square_root_result = isqrt32(16);
-        ssd1306_clear_display_buffer(global_display_buffer);
+        Delay(250);
 
-        ssd1306_draw_big_char_to_buffer(0, 0, square_root_result + '0', global_display_buffer);
-        ssd1306_draw_big_char_to_buffer(0, 0, my_system_time.minutes/10 + '0', global_display_buffer);
-        ssd1306_draw_big_char_to_buffer(24, 0, my_system_time.minutes%10 + '0', global_display_buffer);
-        ssd1306_draw_big_char_to_buffer(48, 0, ':', global_display_buffer);
-        ssd1306_draw_big_char_to_buffer(72, 0, my_system_time.seconds/10 + '0', global_display_buffer);
-        ssd1306_draw_big_char_to_buffer(96, 0, my_system_time.seconds%10 + '0', global_display_buffer);
-        ssd1306_i2c_draw_buffer(I2C1, I2C1_SSD1306_SLAVE_ADDRESS8, global_display_buffer);
-        //ssd1306_clear_display_buffer(global_display_buffer);
     }
+    /* Scratch are follow until the end of main
+    *  aka never gets down to thse below
+    *
+    *  Useful for testing new/old functions
+    */
 
     // Loop forever printng strings and patterns
     while(1){
@@ -732,8 +739,7 @@ my_states_t get_next_state(my_states_t current_state){
 void SysTick_Handler(void){
 // SysTick interrupt handler - Configured to run every 1ms
 
-    const uint8_t debounce_time = 200;
-    uint8_t current_button_status = 0; 
+    const uint8_t debounce_time = 100;
     static uint16_t pressed_counter = 0;
     static uint16_t not_pressed_counter = 0;
     // Delay
@@ -744,6 +750,7 @@ void SysTick_Handler(void){
     current_button_status = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_0);
 
     if(!current_button_status){
+        GPIO_WriteBit(GPIOC, GPIO_Pin_8, 0);
         not_pressed_counter++;
         pressed_counter=0;
         if(not_pressed_counter >= debounce_time){
@@ -752,9 +759,11 @@ void SysTick_Handler(void){
         }
     }
     else{
+        //GPIO_WriteBit(GPIOC, GPIO_Pin_8, 1);
         not_pressed_counter=0;
         pressed_counter++;
         if(pressed_counter >= debounce_time){
+            GPIO_WriteBit(GPIOC, GPIO_Pin_8, 1);
             pressed_counter = debounce_time+1;
             //button_status = 1;
             my_system_status.current_state = get_next_state(my_system_status.current_state);
